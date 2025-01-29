@@ -17,9 +17,12 @@ importers:
       '@middy/core':
         specifier: ^5.5.1
         version: 5.5.1
+      '@middy/http-error-handler':
+        specifier: ^6.0.0
+        version: 6.0.0
       '@middy/http-json-body-parser':
-        specifier: ^5.5.1
-        version: 5.5.1
+        specifier: ^6.0.0
+        version: 6.0.0
       uuid:
         specifier: ^11.0.5
         version: 11.0.5
@@ -869,13 +872,17 @@ packages:
     resolution: {integrity: sha512-D7q0WXoH2HKyAqw+EN9DuKTp1j+Yr1Aup4m+ALdkyx60fZNGYOFXIx8rKO+ipPC9BBqjbig/zloyIHCZhdK0xg==}
     engines: {node: '>=18'}
 
-  '@middy/http-json-body-parser@5.5.1':
-    resolution: {integrity: sha512-XHOnSu7vSFaBJ49Stq8vcnXOAgclLc2ZsM91oUlBN8UE0wCmDIdbBArqa8DnvISJvHldslQWsEorbsqLIJh/FA==}
-    engines: {node: '>=18'}
+  '@middy/http-error-handler@6.0.0':
+    resolution: {integrity: sha512-UYI0udZ8rH9nluLGS419RyUYKyBYg7kQVwCHqA+l0B8cklMU3DP6ArpOGviioi0n3X1KgI7YuYDEVvMl167D9g==}
+    engines: {node: '>=20'}
 
-  '@middy/util@5.5.1':
-    resolution: {integrity: sha512-yWvycirftFpXFYt4MXCPjPfM4tQOs4Ib2eyzZEIPOJoEz2cg8mogVNI1TehiCD5O2S1rOPbMduUaXNO6LXiOMA==}
-    engines: {node: '>=18'}
+  '@middy/http-json-body-parser@6.0.0':
+    resolution: {integrity: sha512-/uhdznqnLStNpqMqMBrTF0TjuPktB0T6Uy2p5vsitdVa8XycWsNDSkK2vMCWKYGGTA+vLHZs4RKAHXihAed5pg==}
+    engines: {node: '>=20'}
+
+  '@middy/util@6.0.0':
+    resolution: {integrity: sha512-V2/gJ4wE6TtMJNAnUTm3VRdgNyLI6zdNLy3MzhrJOwxiUslG1OSShE1IUYR0cmzMOm5w/Y2p3+OIRXRqKUVHYQ==}
+    engines: {node: '>=20'}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -3391,11 +3398,15 @@ snapshots:
     dependencies:
       '@datastream/core': 0.0.38
 
-  '@middy/http-json-body-parser@5.5.1':
+  '@middy/http-error-handler@6.0.0':
     dependencies:
-      '@middy/util': 5.5.1
+      '@middy/util': 6.0.0
 
-  '@middy/util@5.5.1': {}
+  '@middy/http-json-body-parser@6.0.0':
+    dependencies:
+      '@middy/util': 6.0.0
+
+  '@middy/util@6.0.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:

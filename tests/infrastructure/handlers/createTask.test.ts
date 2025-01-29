@@ -1,139 +1,197 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CreateTask } from '../../../src/infrastructure/handlers/createTask';
-import { TaskStatus } from '../../../src/domain/entities/Task';
 import { APIGatewayProxyEvent } from 'aws-lambda';
-import middy from '@middy/core';
+import { Task, TaskStatus } from '../../../src/domain/entities/Task';
+import { CreateTask, handler } from '../../../src/infrastructure/handlers/createTask';
 import { CreateTaskUseCase } from '../../../src/application/CreateTaskUseCase';
-import jsonBodyParser from '@middy/http-json-body-parser';
 
-const mockCreateTaskUseCase = {
-  execute: vi.fn(),
-};
+vi.mock('../../../src/application/CreateTaskUseCase');
 
-describe('createTask handler', () => {
-  let handler: middy.MiddyfiedHandler;
+const mockTask = (overrides?: Partial<Task>): Task => ({
+  id: '123',
+  title: 'Test Task',
+  description: 'Test Description',
+  status: TaskStatus.TODO,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  ...overrides,
+});
+
+const mockEvent = (body: unknown): APIGatewayProxyEvent => ({
+  body: JSON.stringify(body),
+  headers: { 'Content-Type': 'application/json' },
+  multiValueHeaders: {},
+  httpMethod: 'POST',
+  isBase64Encoded: false,
+  path: '/tasks',
+  pathParameters: null,
+  queryStringParameters: null,
+  multiValueQueryStringParameters: null,
+  stageVariables: null,
+  requestContext: {} as any,
+  resource: '',
+});
+
+describe('CreateTask Lambda Function', () => {
+  const mockExecute = vi.mocked(CreateTaskUseCase.prototype.execute);
 
   beforeEach(() => {
-    const createTask = new CreateTask(mockCreateTaskUseCase as unknown as CreateTaskUseCase);
-    handler = middy(async (event: APIGatewayProxyEvent) => createTask.handle(event)).use(
-      jsonBodyParser()
-    );
-
     vi.clearAllMocks();
+    process.env.DYNAMODB_TABLE = 'test-table';
   });
 
-  const mockEvent = (body: any): APIGatewayProxyEvent => ({
-    body: body,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    multiValueHeaders: {},
-    httpMethod: 'POST',
-    isBase64Encoded: false,
-    path: '/tasks',
-    pathParameters: null,
-    queryStringParameters: null,
-    multiValueQueryStringParameters: null,
-    stageVariables: null,
-    requestContext: {} as any,
-    resource: '',
+  describe('Request Validation', () => {
+    it('should return 400 when title is missing', async () => {
+      const response = await handler(
+        mockEvent({
+          description: 'Test',
+          status: TaskStatus.TODO,
+        }),
+        {} as any
+      );
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body).errors).toContainEqual(
+        expect.objectContaining({
+          path: ['title'],
+          message: 'Required',
+        })
+      );
+      expect(mockExecute).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 when description is missing', async () => {
+      const response = await handler(
+        mockEvent({
+          title: 'Test',
+          status: TaskStatus.TODO,
+        }),
+        {} as any
+      );
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body).errors).toContainEqual(
+        expect.objectContaining({
+          path: ['description'],
+          message: 'Required',
+        })
+      );
+      expect(mockExecute).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 when status is invalid', async () => {
+      const response = await handler(
+        mockEvent({
+          title: 'Test',
+          description: 'Test',
+          status: 'INVALID_STATUS',
+        }),
+        {} as any
+      );
+
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body).errors[0].path).toEqual(['status']);
+      expect(mockExecute).not.toHaveBeenCalled();
+    });
   });
 
-  it('should create a task successfully', async () => {
-    const taskData = {
-      title: 'Test Task',
-      description: 'Test Description',
-      status: TaskStatus.TODO,
-    };
+  describe('Business Logic', () => {
+    it('should create task with valid payload', async () => {
+      const task = mockTask();
+      mockExecute.mockResolvedValue(task);
 
-    const expectedTask = {
-      id: '123',
-      ...taskData,
-      createdAt: new Date().toISOString(),
-    };
+      const response = await handler(
+        mockEvent({
+          title: task.title,
+          description: task.description,
+          status: task.status,
+        }),
+        {} as any
+      );
 
-    mockCreateTaskUseCase.execute.mockImplementation(() => Promise.resolve(expectedTask));
-
-    const response = await handler(mockEvent(JSON.stringify(taskData)), {} as any);
-
-    expect(response.statusCode).toBe(201);
-    expect(JSON.parse(response.body)).toEqual(expectedTask);
-    expect(mockCreateTaskUseCase.execute).toHaveBeenCalledWith(taskData);
+      expect(response.statusCode).toBe(201);
+      expect(JSON.parse(response.body)).toEqual(task);
+    });
   });
 
-  it('should return 400 error if title is empty', async () => {
-    const invalidTaskData = {
-      title: '',
-      description: 'Test Description',
-      status: TaskStatus.TODO,
-    };
+  describe('Error Handling', () => {
+    it('should return 500 on infrastructure errors', async () => {
+      mockExecute.mockRejectedValue(new Error('DB error'));
 
-    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const response = await handler(
+        mockEvent({
+          title: 'Test',
+          description: 'Test',
+          status: TaskStatus.TODO,
+        }),
+        {} as any
+      );
 
-    const response = await handler(mockEvent(JSON.stringify(invalidTaskData)), {} as any);
+      expect(response.statusCode).toBe(500);
+    });
+
+    it('should throw when DynamoDB table is missing', async () => {
+      delete process.env.DYNAMODB_TABLE;
+
+      await expect(handler(mockEvent({}), {} as any)).rejects.toThrow(
+        'DYNAMODB_TABLE environment variable is not set'
+      );
+    });
+  });
+
+  describe('Edge Cases', () => {
+    it('should handle maximum length inputs', async () => {
+      const longString = 'a'.repeat(1000);
+      const task = mockTask({
+        title: longString,
+        description: longString,
+      });
+
+      mockExecute.mockResolvedValue(task);
+
+      const response = await handler(
+        mockEvent({
+          title: longString,
+          description: longString,
+          status: TaskStatus.TODO,
+        }),
+        {} as any
+      );
+
+      expect(response.statusCode).toBe(201);
+      expect(JSON.parse(response.body).title).toHaveLength(1000);
+    });
+  });
+});
+
+describe('CreateTask Class', () => {
+  const mockCreateTaskUseCase = {
+    execute: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('should handle unexpected error structure', async () => {
+    mockCreateTaskUseCase.execute.mockRejectedValue({ foo: 'bar' });
+
+    const createTask = new CreateTask(mockCreateTaskUseCase as unknown as CreateTaskUseCase);
+    const response = await createTask.handle({
+      body: {
+        title: 'Test',
+        description: 'Test',
+        status: TaskStatus.TODO,
+      },
+    } as unknown as APIGatewayProxyEvent);
 
     expect(response.statusCode).toBe(400);
-    expect(JSON.parse(response.body)).toEqual({ message: 'Invalid request' });
-    expect(mockCreateTaskUseCase.execute).not.toHaveBeenCalled();
-
-    consoleErrorMock.mockRestore();
   });
 
-  it('should return 400 error if description is missing', async () => {
-    const invalidTaskData = {
-      title: 'Test Task',
-      description: '',
-      status: TaskStatus.TODO,
-    };
-
-    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const response = await handler(mockEvent(JSON.stringify(invalidTaskData)), {} as any);
+  it('should handle empty event body', async () => {
+    const createTask = new CreateTask(mockCreateTaskUseCase as unknown as CreateTaskUseCase);
+    const response = await createTask.handle({ body: null } as APIGatewayProxyEvent);
 
     expect(response.statusCode).toBe(400);
-    expect(JSON.parse(response.body)).toEqual({ message: 'Invalid request' });
-    expect(mockCreateTaskUseCase.execute).not.toHaveBeenCalled();
-
-    consoleErrorMock.mockRestore();
-  });
-
-  it('should return 400 error if status is invalid', async () => {
-    const invalidTaskData = {
-      title: 'Test Task',
-      description: 'Test Description',
-      status: 'INVALID_STATUS',
-    };
-
-    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const response = await handler(mockEvent(JSON.stringify(invalidTaskData)), {} as any);
-
-    expect(response.statusCode).toBe(400);
-    expect(JSON.parse(response.body)).toEqual({ message: 'Invalid request' });
-    expect(mockCreateTaskUseCase.execute).not.toHaveBeenCalled();
-
-    consoleErrorMock.mockRestore();
-  });
-
-  it('should return 400 error if use case throws error', async () => {
-    const taskData = {
-      title: 'Test Task',
-      description: 'Test Description',
-      status: TaskStatus.TODO,
-    };
-
-    const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    mockCreateTaskUseCase.execute.mockImplementation(() =>
-      Promise.reject(new Error('Use case error'))
-    );
-
-    const response = await handler(mockEvent(JSON.stringify(taskData)), {} as any);
-
-    expect(response.statusCode).toBe(400);
-    expect(JSON.parse(response.body)).toEqual({ message: 'Invalid request' });
-    expect(mockCreateTaskUseCase.execute).toHaveBeenCalledWith(taskData);
-
-    consoleErrorMock.mockRestore();
+    expect(JSON.parse(response.body).errors).toBeInstanceOf(Array);
   });
 });
