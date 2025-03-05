@@ -40,9 +40,13 @@ export class GetTask {
 }
 
 export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
+  if (!process.env.DYNAMODB_TABLE) {
+    throw new Error('DYNAMODB_TABLE environment variable is not set');
+  }
+
   return new GetTask(
     new GetTaskUseCase(
-      new DynamoDBTaskRepository(DynamoDBAdapter.getInstance(), process.env.DYNAMODB_TABLE!)
+      new DynamoDBTaskRepository(DynamoDBAdapter.getInstance(), process.env.DYNAMODB_TABLE)
     )
   ).handle(event);
 };

@@ -8,6 +8,7 @@ vi.mock('../../../src/infrastructure/repositories/DynamoDBTaskRepository');
 describe('getTask handler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.DYNAMODB_TABLE = 'test-table';
   });
 
   it('should return a task when it exists', async () => {
@@ -79,5 +80,13 @@ describe('getTask handler', () => {
     expect(JSON.parse(result.body)).toHaveProperty('message', 'Internal server error');
 
     consoleErrorMock.mockRestore();
+  });
+
+  it('should throw when DynamoDB table is missing', async () => {
+    delete process.env.DYNAMODB_TABLE;
+
+    await expect(handler({} as any)).rejects.toThrow(
+      'DYNAMODB_TABLE environment variable is not set'
+    );
   });
 });
